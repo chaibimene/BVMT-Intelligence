@@ -21,3 +21,33 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+# Environnement virtuel
+venv/
+env/
+.env
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# FAISS + Bases vectorielles
+*.faiss
+vectorstore/
+faiss_index/
+
+# Données
+data/raw/
+data/processed/
+*.pdf
+*.zip
+
+# Logs
+*.log
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Jupyter
+.ipynb_checkpoints/
