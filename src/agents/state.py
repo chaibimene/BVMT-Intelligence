@@ -9,3 +9,4 @@ class GraphState(TypedDict):
     documents: List[str]
     iterations: int
     error: str
+    query_type: str

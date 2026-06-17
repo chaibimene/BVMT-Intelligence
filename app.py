@@ -64,14 +64,13 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "sources" in msg and msg["sources"]:
-            with st.expander("📚 Sources consultées (Top 5)"):
+            with st.expander("📚 Sources principales"):
                 for i, doc in enumerate(msg["sources"]):
                     import os
                     source_path = doc.metadata.get('source', 'Inconnue')
                     filename = os.path.basename(source_path) if source_path != 'Inconnue' else 'Inconnue'
-                    st.markdown(f"**📄 {filename}**")
                     clean_content = doc.page_content.replace('\n', ' ').strip()
-                    st.caption(f'"{clean_content[:250]}..."')
+                    st.markdown(f"**📄 {filename}**\n> {clean_content[:200]}...")
                     st.divider()
 
 # Input utilisateur
@@ -97,16 +96,13 @@ if prompt := st.chat_input("Posez votre question sur la bourse tunisienne..."):
                 
                 # Affichage des sources
                 if documents:
-                    with st.expander("📚 Sources consultées (Top 5)"):
+                    with st.expander("📚 Sources principales"):
                         for i, doc in enumerate(documents):
                             import os
                             source_path = doc.metadata.get('source', 'Inconnue')
                             filename = os.path.basename(source_path) if source_path != 'Inconnue' else 'Inconnue'
-                            
-                            st.markdown(f"**📄 {filename}**")
-                            # Nettoyer un peu l'extrait
                             clean_content = doc.page_content.replace('\n', ' ').strip()
-                            st.caption(f'"{clean_content[:250]}..."')
+                            st.markdown(f"**📄 {filename}**\n> {clean_content[:200]}...")
                             st.divider()
                             
                 # Sauvegarder dans l'historique
