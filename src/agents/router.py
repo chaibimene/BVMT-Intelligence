@@ -8,9 +8,7 @@ logger = logging.getLogger(__name__)
 def get_router():
     """
     Crée un routeur qui décide du type de traitement à appliquer.
-    Retourne un objet JSON contenant :
-    - 'route' : 'investment_advice', 'vectorstore' ou 'general'
-    - 'query_type' : 'resume', 'performance', 'comparaison', 'tendance', ou 'autre'
+    Retourne un objet JSON : "route" et "query_type".
     """
     llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 
@@ -18,11 +16,12 @@ def get_router():
 Analysez la question de l'utilisateur et générez une réponse strictement en format JSON contenant deux clés : "route" et "query_type".
 
 1. Choix pour "route" :
-   - "investment_advice" : Conseils pour investir, quelle action acheter, recommandation d'achat/vente.
-   - "vectorstore" : Informations factuelles (performances, entreprises, bilans, cotations passées).
-   - "general" : Salutations, questions basiques hors finance.
+   - "report" : L'utilisateur demande explicitement de générer un rapport complet ou une synthèse longue (ex: "Génère un rapport sur...", "Fais une synthèse sectorielle").
+   - "vectorstore" : Toute question liée à la finance, aux entreprises, aux banques, aux marchés, aux cotations, ou aux conseils d'investissement.
+   - "general" : Salutations, questions basiques totalement hors finance.
 
 2. Choix pour "query_type" :
+   - "investment" : L'utilisateur demande des recommandations, conseils, ou comparaisons orientées vers l'achat/vente (ex: "Dans quoi investir ?", "Quelle banque choisir ?", "Conseille-moi des actions").
    - "resume" : L'utilisateur veut un aperçu général ou une synthèse globale.
    - "performance" : L'utilisateur demande des chiffres, des résultats, ou qui est le meilleur/le pire.
    - "comparaison" : L'utilisateur veut comparer deux entités ou plus.
@@ -30,7 +29,7 @@ Analysez la question de l'utilisateur et générez une réponse strictement en f
    - "autre" : Si aucun de ces types ne correspond.
 
 Votre réponse DOIT être un JSON valide, sans bloc de code Markdown, par exemple :
-{{"route": "vectorstore", "query_type": "performance"}}
+{{"route": "vectorstore", "query_type": "investment"}}
 """
 
     prompt = ChatPromptTemplate.from_messages([

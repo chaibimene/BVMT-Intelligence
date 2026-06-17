@@ -11,11 +11,13 @@ def get_hallucination_grader():
     """
     llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
     
-    system_prompt = """Vous êtes un évaluateur strict. Votre rôle est d'évaluer si la RÉPONSE fournie est entièrement fondée sur les DOCUMENTS.
-    
+    system_prompt = """Vous êtes un évaluateur. Votre rôle est d'évaluer si la RÉPONSE est globalement cohérente avec les DOCUMENTS fournis.
+
 Répondez uniquement par 'oui' ou 'non'.
-- 'oui' : la réponse est supportée par les documents (même si l'année exacte manque et que l'IA a synthétisé les données disponibles).
-- 'non' : la réponse contient des informations factuelles spécifiques non présentes dans les documents (hallucination stricte)."""
+- 'oui' : la réponse s'appuie sur le contenu des documents, même si elle fait une synthèse, formule des recommandations ou déduit une tendance. Une reformulation intelligente est acceptable.
+- 'non' : la réponse contient des faits SPÉCIFIQUES clairement absents des documents (noms, chiffres, dates entièrement inventés).
+
+IMPORTANT : Ne rejetez PAS une réponse simplement parce qu'elle synthétise ou reformule les informations. Seule une fabrication complète de faits est une hallucination."""
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
@@ -26,15 +28,15 @@ Répondez uniquement par 'oui' ou 'non'.
 
 def get_answer_relevance_grader():
     """
-    Évalue si la génération répond effectivement à la question de l'utilisateur ET est concise.
+    Évalue si la génération répond effectivement à la question de l'utilisateur.
     """
     llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
     
-    system_prompt = """Vous êtes un évaluateur strict. Votre rôle est d'évaluer si la RÉPONSE adresse utilement la QUESTION posée tout en respectant une structure stricte.
+    system_prompt = """Vous êtes un évaluateur strict. Votre rôle est d'évaluer si la RÉPONSE adresse utilement la QUESTION posée.
     
 Répondez uniquement par 'oui' ou 'non'.
-- 'oui' : la réponse contient des faits/noms concrets extraits du contexte ET respecte la structure Markdown demandée (gras, puces).
-- 'non' : la réponse dit "je n'ai pas les données", refuse de répondre alors qu'il y a des infos connexes, ou ne respecte pas le format Markdown."""
+- 'oui' : la réponse contient des faits/noms concrets extraits du contexte. Tous ces formats sont acceptés : puces Markdown, tableau avec recommandations (Surpondérer/Neutre/Sous-pondérer), analyse structurée en gras.
+- 'non' : la réponse dit "je n'ai pas les données" alors qu'il y a des informations disponibles, ou la réponse n'est pas du tout liée à la question."""
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),

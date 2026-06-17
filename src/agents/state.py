@@ -1,4 +1,4 @@
-from typing import List, TypedDict
+from typing import List, TypedDict, Dict, Any
 
 class GraphState(TypedDict):
     """
@@ -10,3 +10,4 @@ class GraphState(TypedDict):
     iterations: int
     error: str
     query_type: str
+    chat_history: List[Dict[str, Any]]
