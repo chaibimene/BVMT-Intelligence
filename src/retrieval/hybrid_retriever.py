@@ -1,18 +1,15 @@
 import logging
-from langchain.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
-from langchain.retrievers.multi_query import MultiQueryRetriever
-from langchain_groq import ChatGroq
-from src.ingestion.ingest import load_vectorstore
+from langchain_classic.retrievers import EnsembleRetriever
 
 logger = logging.getLogger(__name__)
 
 def get_hybrid_retriever(model_choice="bge", use_multi_query=True):
     """
     Crée un retriever hybride combinant FAISS (recherche vectorielle) et BM25 (recherche lexicale).
-    Intègre également un MultiQueryRetriever pour améliorer les requêtes.
     """
     logger.info("Chargement du VectorStore FAISS...")
+    from src.ingestion.ingest import load_vectorstore
     vectorstore = load_vectorstore(model_choice)
     
     if not vectorstore:
@@ -29,7 +26,7 @@ def get_hybrid_retriever(model_choice="bge", use_multi_query=True):
 
     logger.info("Initialisation de BM25Retriever...")
     bm25_retriever = BM25Retriever.from_documents(documents)
-    bm25_retriever.k = 5 # Nombre de résultats pour BM25
+    bm25_retriever.k = 5
 
     faiss_retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 
@@ -41,12 +38,18 @@ def get_hybrid_retriever(model_choice="bge", use_multi_query=True):
     )
 
     if use_multi_query:
-        logger.info("Enrobage avec MultiQueryRetriever...")
-        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
-        multi_query_retriever = MultiQueryRetriever.from_llm(
-            retriever=ensemble_retriever,
-            llm=llm
-        )
-        return multi_query_retriever
+        try:
+            from langchain_classic.retrievers.multi_query import MultiQueryRetriever
+            from langchain_groq import ChatGroq
+            logger.info("Enrobage avec MultiQueryRetriever...")
+            llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+            multi_query_retriever = MultiQueryRetriever.from_llm(
+                retriever=ensemble_retriever,
+                llm=llm
+            )
+            return multi_query_retriever
+        except Exception as e:
+            logger.warning(f"MultiQueryRetriever non disponible: {e}. Utilisation de l'EnsembleRetriever simple.")
+            return ensemble_retriever
     
     return ensemble_retriever

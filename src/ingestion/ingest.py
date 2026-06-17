@@ -18,9 +18,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Constantes
-DATA_DIR = os.path.join("data", "raw")
-VECTORSTORE_DIR = "vectorstore"
+# Constantes (chemins absolus basés sur la racine du projet)
+# __file__ = src/ingestion/ingest.py → dirname = src/ingestion → dirname = src → dirname = racine
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.path.join(BASE_DIR, "data", "raw")
+VECTORSTORE_DIR = os.path.join(BASE_DIR, "vectorstore")
 
 # Définition des modèles d'embeddings
 MODELS = {
