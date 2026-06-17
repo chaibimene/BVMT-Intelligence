@@ -1,0 +1,12 @@
+langchain
+langchain-community
+langchain-huggingface
+langchain-groq
+langgraph
+faiss-cpu
+streamlit
+pypdf
+FlagEmbedding
+pandas
+python-dotenv
+rank_bm25

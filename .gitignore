@@ -1,53 +1,20 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
-.vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
-# Environnement virtuel
-venv/
-env/
-.env
-
-# Cache Python
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+env/
+build/
+dist/
+*.egg-info/
 
-# FAISS + Bases vectorielles
-*.faiss
-vectorstore/
-faiss_index/
+# Environnement virtuel
+.env
+venv/
+ENV/
 
-# Données
-data/raw/
-data/processed/
-*.pdf
-*.zip
-
-# Logs
-*.log
-
-# Streamlit
-.streamlit/secrets.toml
-
-# Jupyter
-.ipynb_checkpoints/
+# Dossiers spécifiques au projet
+data/raw/*
+!data/raw/.keep
+vectorstore/*
+!vectorstore/.keep
