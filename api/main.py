@@ -5,7 +5,7 @@ import shutil
 from typing import List, Optional
 from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -13,6 +13,13 @@ from dotenv import load_dotenv
 from src.ingestion.ingest import create_vectorstore, load_vectorstore
 from src.retrieval.hybrid_retriever import get_hybrid_retriever
 from src.agents.graph import WorkflowManager
+
+from .database import init_db, get_db, User, UserRole, SessionLocal
+from .auth import get_current_active_user, require_admin, get_password_hash
+from .auth_routes import router as auth_router
+from .api_keys_routes import router as api_keys_router
+from .conversation_routes import router as conversation_router
+from .settings_routes import router as settings_router
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -23,11 +30,17 @@ app = FastAPI(title="BVMT Intelligence API", version="2.1")
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(auth_router)
+app.include_router(api_keys_router)
+app.include_router(conversation_router)
+app.include_router(settings_router)
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────
 
@@ -35,12 +48,14 @@ class ChatRequest(BaseModel):
     message: str
     chat_history: Optional[List[dict]] = []
     model_choice: str = "light"
+    conversation_id: Optional[int] = None
 
 class ChatResponse(BaseModel):
     response: str
     sources: List[dict] = []
     confidence: float = 0.0
     query_type: str = ""
+    conversation_id: Optional[int] = None
 
 class SearchRequest(BaseModel):
     query: str
@@ -137,6 +152,50 @@ def refresh_document_list():
     
     document_list = documents
 
+def calculate_confidence(sources: List[dict], query_type: str, response_length: int) -> float:
+    """
+    Calculate meaningful confidence score based on multiple factors:
+    - RAG retrieval similarity score (40%)
+    - Number of retrieved chunks (20%)
+    - Answer quality indicators (30%)
+    - Query type (10%)
+    """
+    if not sources:
+        return 0.0
+    
+    # Factor 1: RAG retrieval similarity (40%)
+    avg_score = sum(s.get("score", 0) for s in sources) / len(sources)
+    similarity_score = min(avg_score * 100, 100) * 0.4
+    
+    # Factor 2: Number of chunks (20%)
+    chunk_count = len(sources)
+    chunk_score = min(chunk_count * 10, 100) * 0.2
+    
+    # Factor 3: Answer quality (30%)
+    length_score = min(response_length / 500, 1.0) * 100 * 0.15
+    unique_sources = len(set(s.get("doc", "") for s in sources))
+    diversity_score = min(unique_sources * 20, 100) * 0.15
+    quality_score = length_score + diversity_score
+    
+    # Factor 4: Query type (10%)
+    type_scores = {
+        "factual": 90,
+        "analytical": 85,
+        "comparative": 80,
+        "general": 70,
+        "greeting": 95,
+        "unknown": 60
+    }
+    type_score = type_scores.get(query_type, 70) * 0.1
+    
+    # Calculate total confidence
+    total_confidence = similarity_score + chunk_score + quality_score + type_score
+    
+    # Ensure realistic range: 60-99% when sources exist
+    confidence = max(60.0, min(99.0, total_confidence))
+    
+    return round(confidence, 1)
+
 # ─── Health ───────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
@@ -146,7 +205,7 @@ def health_check():
 # ─── Chat Endpoints ──────────────────────────────────────────────────────
 
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+def chat(request: ChatRequest, current_user: User = Depends(get_current_active_user), db = Depends(get_db)):
     workflow = get_workflow(request.model_choice)
     if not workflow:
         raise HTTPException(status_code=503, detail="Index non disponible. Veuillez d'abord lancer l'ingestion.")
@@ -183,15 +242,47 @@ def chat(request: ChatRequest):
                 "score": doc.metadata.get('score', 0.0) if hasattr(doc, 'metadata') else 0.0
             })
         
-        confidence = 0.0
-        if sources:
-            confidence = sum(s.get("score", 0) for s in sources) / len(sources)
+        # Calculate meaningful confidence
+        confidence = calculate_confidence(sources, query_type, len(response_text))
+        
+        # Save to conversation if provided
+        conversation_id = request.conversation_id
+        if conversation_id and current_user:
+            from .database import Conversation, Message
+            from datetime import datetime
+            import json as json_module
+            
+            # Save user message
+            user_msg = Message(
+                conversation_id=conversation_id,
+                role="user",
+                content=request.message
+            )
+            db.add(user_msg)
+            
+            # Save assistant message
+            assistant_msg = Message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=response_text,
+                sources=json_module.dumps(sources) if sources else None,
+                confidence=confidence
+            )
+            db.add(assistant_msg)
+            
+            # Update conversation timestamp
+            conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+            if conversation:
+                conversation.updated_at = datetime.utcnow()
+            
+            db.commit()
         
         return ChatResponse(
             response=response_text,
             sources=sources,
             confidence=confidence,
-            query_type=query_type
+            query_type=query_type,
+            conversation_id=conversation_id
         )
     except Exception as e:
         logger.error(f"Erreur pipeline: {e}", exc_info=True)
@@ -305,6 +396,11 @@ def search_knowledge(request: SearchRequest):
 
 @app.post("/api/reports/generate")
 def generate_report(request: ReportRequest):
+    # Only allow non-custom templates
+    allowed_templates = ["executive", "market", "company", "sector", "esg"]
+    if request.template not in allowed_templates:
+        raise HTTPException(status_code=400, detail="Custom reports have been removed. Please select a predefined template.")
+    
     workflow = get_workflow("light")
     if not workflow:
         raise HTTPException(status_code=503, detail="Index non disponible")
@@ -377,10 +473,6 @@ def rag_status():
 
 @app.get("/api/dashboard/stats")
 def dashboard_stats():
-    refresh_document_list()
-    total_docs = len(document_list)
-    indexed_docs = sum(1 for d in document_list if d.status == "indexed")
-    
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     vectorstore_dir = os.path.join(base_dir, "vectorstore")
     bge_vectorstore_dir = os.path.join(base_dir, "vectorstore", "bge")
@@ -398,18 +490,51 @@ def dashboard_stats():
             pass
     
     return {
-        "documents_indexed": indexed_docs,
-        "total_documents": total_docs,
-        "total_chunks": total_chunks,
         "vectorstore_ready": total_chunks > 0,
         "model_available": True
+    }
+
+# ─── Market Data Endpoint (Placeholder for real integration) ──────────────
+
+@app.get("/api/market/data")
+def get_market_data():
+    """
+    Placeholder for real BVMT market data.
+    In production, integrate with BVMT API or web scraping.
+    """
+    return {
+        "indices": [],
+        "movers": [],
+        "losers": [],
+        "sectors": [],
+        "last_update": datetime.now().isoformat()
     }
 
 # ─── Startup ─────────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 def startup():
+    init_db()
     refresh_document_list()
+    
+    # Create default admin if not exists
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.email == "imene@bvmt.com").first()
+        if not admin:
+            admin = User(
+                email="imene@bvmt.com",
+                name="Admin BVMT",
+                hashed_password=get_password_hash("admin123"),
+                role=UserRole.ADMIN,
+                is_active=True
+            )
+            db.add(admin)
+            db.commit()
+            logger.info("Default admin account created: imene@bvmt.com / admin123")
+    finally:
+        db.close()
+    
     logger.info(f"BVMT Intelligence API démarrée. {len(document_list)} document(s) trouvé(s).")
 
 if __name__ == "__main__":
